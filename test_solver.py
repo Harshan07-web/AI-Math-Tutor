@@ -29,15 +29,20 @@ print("\n\n")
 print("EXTRACTED STEPS:\n",output_steps)
 print("\n\n")
 print("NORMALIZED STEPS\n",noutput_steps)
+print()
 
 key = ['step_number','input','output','explanation_hint'] 
 
 for i in noutput_steps:
     for j,k in i.items():
         if j in key:
-            print(j)
-            print(k)
+            if j=='explanation_hint':
+                print(j)
+                print(k)
+            else:
+                print(f"{j} : {k}")
     print()
+
 
 
 
