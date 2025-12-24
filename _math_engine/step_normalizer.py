@@ -1,20 +1,34 @@
-import re
-
 class StepNormalizer:
     def __init__(self):
         pass
 
-    def normalize_steps(self, steps: list[str]) -> list[str]:
-       
-        normalized = []
-        for i, step in enumerate(steps, 1):
-            # Trim and clean
-            step = re.sub(r'\s+', ' ', step.strip())
-            # Add numbering and math delimiters if equations present
-            if re.search(r'[=+\-*/^]', step):
-                step = f"{i}. {step.split(':')[0]}: $$ {step.split(':')[-1].strip()} $$" if ':' in step else f"{i}. $$ {step} $$"
-            else:
-                step = f"{i}. {step}"
-            normalized.append(step)
-        
-        return normalized
+    def normalize_steps(self, steps: list[dict]) -> list[dict]:
+        """
+        Normalizes extracted steps into a consistent schema.
+
+        Expected input:
+        [
+            {
+                "step_number": 1,
+                "type": "rule_application",
+                "rule": "power_rule",
+                "input": "x**2",
+                "output": "x**3/3",
+                "hint": "Increase the exponent by 1 and divide by the new exponent"
+            }
+        ]
+        """
+
+        normalized_steps = []
+
+        for idx, step in enumerate(steps, start=1):
+            normalized_steps.append({
+                "step_number": idx,
+                "type": step.get("type", "unknown"),
+                "rule": step.get("rule"),
+                "input": step.get("input"),
+                "output": step.get("output"),
+                "explanation_hint": step.get("hint", "")
+            })
+
+        return normalized_steps
