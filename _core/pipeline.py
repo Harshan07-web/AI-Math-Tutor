@@ -4,50 +4,46 @@ from _math_engine.step_normalizer import StepNormalizer
 from _llm.explainer import StepExplainer
 from _llm.doubt_handler import DoubtHandler
 
-class MathPipeline:
+class Pipeline:
     def __init__(self):
         self.solver = MathSolver()
         self.extractor = StepExtractor()
         self.normalizer = StepNormalizer()
         self.explainer = StepExplainer()
-        self.doubts = DoubtHandler()
-
-        self.last_normalized_steps = None
-        self.last_explanation = None
-        self.last_answer = None
+        self.doubt = DoubtHandler()
 
     def solve_and_explain(self, user_input: str) -> dict:
-        solve_result = self.solver.solve(user_input)
-        final_answer = solve_result["final_answer"]
-        steps = solve_result["steps"]
-        problem_type = solve_result["problem_type"]
+        result = self.solver.solve(user_input)
 
-        extracted = self.extractor.extract_steps(solve_result)
+        # ⛔ STOP if solver reported error
+        if result.get("error"):
+            return {
+                "error": result["error"],
+                "message": "I couldn't understand that expression. Please rewrite it using standard math notation.",
+                "hint": "Example: d/dx(x^2 + 3*x) or (x^2 + 3*x)^2"
+            }
 
-        normalized_steps = self.normalizer.normalize_steps(extracted)
+        # 🔹 Ask clarification if solver needs it
+        if result.get("requires_clarification"):
+            return result
 
+        final_answer = result.get("final_answer", "")
+        problem_type = result.get("problem_type", "")
+
+        # Extract & normalize steps
+        extracted_steps = self.extractor.extract_steps(result)
+        normalized_steps = self.normalizer.normalize_steps(extracted_steps)
+
+        # Ask LLM ONLY when valid steps exist
         explanation = self.explainer.explain_steps(
-            normalized_steps, final_answer
+            normalized_steps=normalized_steps,
+            final_answer=final_answer,
+            problem_type=problem_type
         )
 
-        self.last_normalized_steps = normalized_steps
-        self.last_explanation = explanation
-        self.last_answer = final_answer
+        result["steps"] = normalized_steps
+        result["explanation"] = explanation
+        return result
 
-        return {
-            "final_answer": final_answer,
-            "steps": normalized_steps,
-            "explanation": explanation,
-            "type": problem_type
-        }
-
-    def answer_doubt(self, user_question: str) -> str:
-        if not self.last_normalized_steps:
-            return "Please solve a problem first 😊"
-
-        return self.doubts.answer_doubt(
-            user_question=user_question,
-            normalized_steps=self.last_normalized_steps,
-            final_answer=self.last_answer,
-            previous_explanation=self.last_explanation
-        )
+    def answer_doubt(self, step_number: int, question: str):
+        return self.doubt.handle_doubt(step_number, question)

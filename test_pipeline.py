@@ -1,12 +1,14 @@
-from _core.pipeline import MathPipeline
+from _core.pipeline import Pipeline
 
-pipeline = MathPipeline()
+pipeline = Pipeline()
 
-print("\n=== Solve ===")
-solve_out = pipeline.solve_and_explain("x^2 + x^3 + 5")
-print(solve_out["final_answer"])
-print(solve_out["explanation"])
+print("=== Solve ===")
 
-print("\n=== Doubt ===")
-ans = pipeline.answer_doubt("Why did 5 become 5x?")
-print(ans)
+# Change expression here for testing:
+#user_expression = "d/dx((x^2 + 3*x) * sin(x))"
+user_expression = "x^3 + 5*x"   # → Will ask: differentiate or integrate?
+#user_expression = "∫(x^2 + 2) dx"  # If you later support symbolic integral frontend
+
+result = pipeline.solve_and_explain(user_expression)
+
+print(result)

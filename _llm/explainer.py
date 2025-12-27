@@ -1,38 +1,43 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
-from .prompts import EXPLAINER_PROMPT
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
-
+api_key = os.getenv("GEMINI_API_KEY")
 
 class StepExplainer:
-    def __init__(self,model_name="models/gemini-2.5-flash-preview-09-2025"):
-        api_key = os.getenv("GEMINI_API_KEY")
+    def __init__(self, model="gemini-2.5-flash-preview-09-2025"):
         self.llm = ChatGoogleGenerativeAI(
-            model=model_name,
+            model=model,
             google_api_key=api_key,
-            temperature=0.3  # balanced tone for teaching
+            temperature=0.2,
         )
 
-    def explain_steps(self, normalized_steps: list[dict], final_answer: str) -> str:
+    def explain_steps(self, normalized_steps: list[dict], final_answer: str, problem_type: str = "general") -> str:
         """
-        Uses Gemini to convert normalized steps into a detailed, 
-        human-friendly explanation.
+        Convert structured steps into a friendly natural language explanation.
         """
 
+        # Format steps into readable bullets
         formatted_steps = "\n".join([
-            f"Step {s['step_number']}:\n"
-            f"- From: {s['input']}\n"
-            f"- To: {s['output']}\n"
-            f"- Why: {s.get('explanation_hint', '')}\n"
+            f"Step {s['step_number']}: {s['type']} → {s['output']}"
             for s in normalized_steps
         ])
 
-        prompt = EXPLAINER_PROMPT.format(
-            steps=formatted_steps,
-            final_answer=final_answer
-        )
+        prompt = f"""
+You are a friendly math tutor. Explain the steps for solving a {problem_type} problem.
 
-        response = self.llm.invoke(prompt)
-        return response.content
+Steps performed:
+{formatted_steps}
+
+Final answer: {final_answer}
+
+Explain what is happening in each step, and why it is correct.
+Keep the explanation short, clean, and helpful for a student.
+        """
+
+        try:
+            response = self.llm.invoke(prompt)
+            return response.content if hasattr(response, "content") else str(response)
+        except Exception as e:
+            return f"Explanation unavailable due to error: {str(e)}"

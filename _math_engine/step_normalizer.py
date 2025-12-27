@@ -3,18 +3,19 @@ class StepNormalizer:
         pass
 
     def normalize_steps(self, steps: list[dict]) -> list[dict]:
+        """
+        Ensure clean formatting of step text for UI or LLM use.
+        """
 
+        normalized = []
 
-        normalized_steps = []
-
-        for idx, step in enumerate(steps, start=1):
-            normalized_steps.append({
-                "step_number": idx,
-                "type": step.get("type", "unknown"),
-                "rule": step.get("rule"),
-                "input": step.get("input"),
-                "output": step.get("output"),
-                "explanation_hint": step.get("hint", "")
+        for step in steps:
+            normalized.append({
+                "step_number": step["step_number"],
+                "type": step.get("type", "info"),
+                "input": step.get("input", ""),
+                "output": step.get("output", ""),
+                "hint": step.get("hint", "")
             })
 
-        return normalized_steps
+        return normalized
