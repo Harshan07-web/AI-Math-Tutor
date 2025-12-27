@@ -6,51 +6,68 @@ class MathSolver:
     def __init__(self):
         pass
 
-    def solve(self, problem_input: dict) -> dict:
+    def _detect_variable(self, expr: str) -> str:
+        """Detect variable automatically from input."""
+        for ch in expr:
+            if ch.isalpha():
+                return ch
+        return 'x'  # fallback
 
+    def _classify_problem(self, problem_str: str) -> str:
+        """Simple rule-based classification."""
+        if "=" in problem_str:
+            return "equation"
+        if "d/d" in problem_str.lower():
+            return "differentiation"
+        return "integration"  # default for expressions
+
+    def solve(self, problem_str: str) -> dict:
+        """
+        Accept raw math string input (not dict)
+        Detects problem type, parses, and solves step-by-step.
+        """
         try:
-            problem_type = problem_input["problem_type"]
-            expr_str = problem_input["expression"]
-            var_str = problem_input.get("variable", None)
-
-            # Create SymPy symbols
-            if var_str:
-                var = sp.symbols(var_str)
-            else:
-                var = None
+            # Problem understanding
+            problem_type = self._classify_problem(problem_str)
+            var_str = self._detect_variable(problem_str)
+            var = sp.symbols(var_str)
 
             # Parse expression
-            expr = sp.sympify(expr_str)
+            if problem_type == "equation":
+                if "=" not in problem_str:
+                    raise ValueError("Equation must contain '='")
 
-            # ---- INTEGRATION ----
+                left_str, right_str = problem_str.split("=", 1)
+                left = sp.sympify(left_str)
+                right = sp.sympify(right_str)
+                expr = Eq(left, right)
+            else:
+                expr = sp.sympify(problem_str)
+
+            # --------------- INTEGRATION ---------------
             if problem_type == "integration":
                 steps = []
-
-                # Check if expression is a sum (linearity case)
                 if isinstance(expr, sp.Add):
-                    terms = expr.args  # individual terms
+                    terms = expr.args
 
-                    # Step 1: Linearity
+                    # Step 1: Linear splitting
                     steps.append({
                         "type": "linearity",
                         "input": str(expr),
-                        "output": " + ".join([f"∫{t} dx" for t in terms]),
+                        "output": " + ".join([f"∫{t} d{var_str}" for t in terms]),
                         "explanation_hint": "Split the integral using linearity"
                     })
 
                     integrated_terms = []
 
-                    # Step 2: Integrate each term
                     for term in terms:
                         result_term = sp.integrate(term, var)
-
-                        # Decide rule type
                         if term.is_Number:
                             rule = "constant_rule"
                             hint = "The integral of a constant is the constant multiplied by x"
                         else:
                             rule = "power_rule"
-                            hint = "Increase the exponent by 1 and divide by the new exponent"
+                            hint = "Increase exponent by 1 and divide by the new exponent"
 
                         steps.append({
                             "type": "rule_application",
@@ -65,7 +82,6 @@ class MathSolver:
                     final_result = sum(integrated_terms)
 
                 else:
-                    # Single-term integration (no linearity needed)
                     final_result = sp.integrate(expr, var)
 
                     steps.append({
@@ -73,7 +89,7 @@ class MathSolver:
                         "rule": "power_rule",
                         "input": str(expr),
                         "output": str(final_result),
-                        "explanation_hint": "Increase the exponent by 1 and divide by the new exponent"
+                        "explanation_hint": "Increase exponent by 1 and divide by the new exponent"
                     })
 
                 return {
@@ -81,33 +97,34 @@ class MathSolver:
                     "steps": steps,
                     "problem_type": "integration"
                 }
-            # ---- DIFFERENTIATION ----
+
+            # --------------- DIFFERENTIATION ---------------
             elif problem_type == "differentiation":
+                expr = sp.sympify(
+                    problem_str.lower().replace(f"d/d{var_str}(", "").replace(")", "")
+                )
                 steps = []
 
-                # Linearity check
                 if isinstance(expr, sp.Add):
                     terms = expr.args
 
-                    # Step 1: Linearity
                     steps.append({
                         "type": "linearity",
                         "input": str(expr),
-                        "output": " + ".join([f"d/d{var}({t})" for t in terms]),
-                        "explanation_hint": "Split the derivative using linearity"
+                        "output": " + ".join([f"d({t})/d{var_str}" for t in terms]),
+                        "explanation_hint": "Split derivative using linearity"
                     })
 
                     differentiated_terms = []
 
                     for term in terms:
                         result_term = sp.diff(term, var)
-
                         if term.is_Number:
                             rule = "constant_rule"
-                            hint = "The derivative of a constant is zero"
+                            hint = "The derivative of a constant is 0"
                         else:
                             rule = "power_rule"
-                            hint = "Multiply by the exponent and reduce the power by 1"
+                            hint = "Multiply exponent and subtract 1"
 
                         steps.append({
                             "type": "rule_application",
@@ -122,7 +139,6 @@ class MathSolver:
                     final_result = sum(differentiated_terms)
 
                 else:
-                    # Single-term differentiation
                     final_result = sp.diff(expr, var)
 
                     steps.append({
@@ -130,7 +146,7 @@ class MathSolver:
                         "rule": "power_rule",
                         "input": str(expr),
                         "output": str(final_result),
-                        "explanation_hint": "Multiply by the exponent and reduce the power by 1"
+                        "explanation_hint": "Multiply exponent and subtract 1"
                     })
 
                 return {
@@ -138,65 +154,29 @@ class MathSolver:
                     "steps": steps,
                     "problem_type": "differentiation"
                 }
-            # ---- EQUATION SOLVING ----
+
+            # --------------- EQUATION SOLVING ---------------
             elif problem_type == "equation":
-                if "=" not in expr_str:
-                    raise ValueError("Equation must contain '='")
-
-                left_str, right_str = expr_str.split("=", 1)
-                left = sp.sympify(left_str)
-                right = sp.sympify(right_str)
-
-                eq = sp.Eq(left, right)
+                eq = expr
                 steps = []
 
-                # Step 1: Original equation
-                steps.append({
-                    "type": "equation",
-                    "input": str(eq),
-                    "output": str(eq),
-                    "explanation_hint": "Start with the given equation"
-                })
-
-                # Step 2: Move constants to the right
-                simplified_eq = sp.solve(eq, var, dict=True)
+                solutions = sp.solve(eq, var, dict=True)
 
                 steps.append({
                     "type": "isolation",
                     "input": str(eq),
-                    "output": f"{var} = {simplified_eq[0][var]}",
-                    "explanation_hint": "Isolate the variable on one side"
+                    "output": f"{var} = {solutions[0][var]}",
+                    "explanation_hint": "Isolate the variable"
                 })
 
                 return {
-                    "final_answer": f"{var} = {simplified_eq[0][var]}",
+                    "final_answer": f"{var} = {solutions[0][var]}",
                     "steps": steps,
                     "problem_type": "equation"
                 }
 
-            # ---- SIMPLIFICATION ----
-            elif problem_type == "simplification":
-                result = sp.simplify(expr)
-
-                steps = [
-                    {
-                        "type": "simplification",
-                        "input": str(expr),
-                        "output": str(result),
-                        "explanation_hint": "Combine like terms and simplify the expression"
-                    }
-                ]
-
-                return {
-                    "final_answer": str(result),
-                    "steps": steps,
-                    "problem_type": "simplification"
-                }
-
             else:
-                raise ValueError(f"Unsupported problem type: {problem_type}")
+                raise ValueError(f"Unsupported type: {problem_type}")
 
         except Exception as e:
-            raise ValueError(f"Solver error: {e}")
-
-
+            raise ValueError(f"Solver Error: {str(e)}")
