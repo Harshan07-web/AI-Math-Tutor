@@ -1,31 +1,87 @@
-import cv2
-import numpy as np
+from pix2tex.cli import LatexOCR
 from PIL import Image
-import torch
-
-from pix2tex.cli import model_from_pretrained  # correct import
 from .preprocessing import Preprocessor
 
+
 class OCRProcessor:
-    """OCR Processor using Pix2Tex + OpenCV preprocessing."""
-
-    def __init__(self, device: str = None):
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        # Load the pretrained Pix2Tex model
-        self.model = model_from_pretrained("im2latex")  # or any available checkpoint
-        self.model.to(self.device)
-        self.model.eval()
-
-    def preprocess_image(self, image: np.ndarray) -> np.ndarray:
-        """Apply OpenCV preprocessing to make the image Pix2Tex-ready."""
-        img = Preprocessor.clean_for_ocr(image)
-        return img
-
-    def image_to_latex(self, image: np.ndarray) -> str:
+    def __init__(self, use_preprocessing: bool = False, device: str | None = None, *args, **kwargs):
         """
-        Convert an input image (numpy array) to LaTeX string.
+        OCR Processor using Pix2Tex LatexOCR.
         """
-        preprocessed = self.preprocess_image(image)
-        pil_img = Image.fromarray(preprocessed)
-        latex_str = self.model.predict(pil_img)  # Pix2Tex inference
-        return latex_str
+        self.use_preprocessing = use_preprocessing
+        try:
+            self.model = LatexOCR(device=device, *args, **kwargs)
+        except TypeError:
+            self.model = LatexOCR(*args, **kwargs)
+
+    def _clean_latex(self, latex: str) -> str:
+        """
+        Clean common OCR artifacts from LaTeX output.
+        """
+        # Remove noisy tokens
+        artifacts = [
+            "::", "*", "\\vdots", "\\scriptstyle", "\\scriptsize",
+            "\\!", "\\displaystyle"
+        ]
+        for artifact in artifacts:
+            latex = latex.replace(artifact, "")
+
+        # Flatten arrays
+        latex = latex.replace("\\begin{array}{c}", "")
+        latex = latex.replace("\\end{array}", "")
+
+        # Fix \left...\right. without closing
+        latex = latex.replace("\\left(", "(").replace("\\right.", ")")
+
+        # Remove filler (~ or long commas)
+        latex = latex.replace("~", "").replace(",","")
+
+        # Balance braces
+        while "{{" in latex:
+            latex = latex.replace("{{", "{")
+        while "}}" in latex:
+            latex = latex.replace("}}", "}")
+
+        # Trim trailing unmatched braces/parentheses
+        open_braces = latex.count("{")
+        close_braces = latex.count("}")
+        if close_braces > open_braces:
+            latex = latex.rstrip("}")
+        elif open_braces > close_braces:
+            latex += "}"
+
+        open_paren = latex.count("(")
+        close_paren = latex.count(")")
+        if close_paren > open_paren:
+            latex = latex.rstrip(")")
+        elif open_paren > close_paren:
+            latex += ")"
+
+        return latex.strip()
+    
+
+    
+
+    def image_to_latex(self, image: Image.Image) -> str:
+        """
+        Convert a PIL.Image to LaTeX using Pix2Tex.
+        """
+        if self.use_preprocessing:
+            image = Preprocessor.clean_for_ocr(image)
+
+        if not isinstance(image, Image.Image):
+            raise TypeError("Input must be a PIL.Image")
+
+        try:
+            if hasattr(self.model, "predict"):
+                latex = self.model.predict(image)
+            elif hasattr(self.model, "to_latex"):
+                latex = self.model.to_latex(image)
+            else:
+                latex = self.model(image)
+        except Exception as e:
+            raise RuntimeError(f"OCR failed: {e}")
+
+        return self._clean_latex(latex)
+
+

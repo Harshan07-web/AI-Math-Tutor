@@ -1,56 +1,63 @@
 import cv2
 import numpy as np
-from PIL import Image, ImageEnhance
-from typing import Union
+from PIL import Image
 
 
 class Preprocessor:
-    """Image preprocessing for OCR using OpenCV and PIL."""
+    @staticmethod
+    def _deskew(img: np.ndarray) -> np.ndarray:
+        coords = np.column_stack(np.where(img > 0))
+        if coords.shape[0] < 10:
+            return img
+        rect = cv2.minAreaRect(coords)
+        angle = rect[-1]
+        angle = -(90 + angle) if angle < -45 else -angle
+        (h, w) = img.shape
+        center = (w // 2, h // 2)
+        M = cv2.getRotationMatrix2D(center, angle, 1.0)
+        return cv2.warpAffine(img, M, (w, h),
+                              flags=cv2.INTER_CUBIC,
+                              borderMode=cv2.BORDER_CONSTANT,
+                              borderValue=0)
 
     @staticmethod
-    def read_image(source: Union[str, np.ndarray, Image.Image]) -> np.ndarray:
-        """Read image from file path, numpy array, or PIL Image."""
-        if isinstance(source, np.ndarray):
-            img = source.copy()
-        elif isinstance(source, Image.Image):
-            img = np.array(source.convert("RGB"))[:, :, ::-1]  # RGB to BGR
-        else:
-            img = cv2.imread(source)
-            if img is None:
-                raise FileNotFoundError(f"Cannot read image: {source}")
-        return img
+    def clean_for_ocr(image: Image.Image, debug: bool = False) -> Image.Image:
+        if image.mode != "RGB":
+            image = image.convert("RGB")
 
-    @staticmethod
-    def to_grayscale(img: np.ndarray) -> np.ndarray:
-        if img.ndim == 3:
-            return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        return img.copy()
+        img = np.array(image)
+        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
-    @staticmethod
-    def enhance_contrast(img: np.ndarray, factor: float = 1.5) -> np.ndarray:
-        pil = Image.fromarray(img if img.ndim == 2 else cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-        pil = ImageEnhance.Contrast(pil).enhance(factor)
-        img = np.array(pil)
-        if img.ndim == 3:
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        return img
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        gray = clahe.apply(gray)
 
-    @staticmethod
-    def denoise(img: np.ndarray, ksize: int = 3) -> np.ndarray:
-        return cv2.medianBlur(img, ksize)
+        _, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        if np.count_nonzero(bw) < 10:
+            return image
 
-    @staticmethod
-    def threshold(img: np.ndarray) -> np.ndarray:
-        gray = Preprocessor.to_grayscale(img)
-        return cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                     cv2.THRESH_BINARY, 25, 10)
+        kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        clean = cv2.morphologyEx(bw, cv2.MORPH_OPEN, kernel_open, iterations=1)
+        clean = cv2.morphologyEx(clean, cv2.MORPH_CLOSE, kernel_close, iterations=1)
+        clean = cv2.medianBlur(clean, 3)
 
-    @staticmethod
-    def preprocess(img: Union[str, np.ndarray, Image.Image]) -> np.ndarray:
-        """Full preprocessing pipeline: read → grayscale → enhance → denoise → threshold."""
-        img = Preprocessor.read_image(img)
-        img = Preprocessor.enhance_contrast(img)
-        img = Preprocessor.to_grayscale(img)
-        img = Preprocessor.denoise(img)
-        img = Preprocessor.threshold(img)
-        return img
+        clean = Preprocessor._deskew(clean)
+
+        h, w = clean.shape
+        pad = max(10, int(max(h, w) * 0.03))
+        clean = cv2.copyMakeBorder(clean, pad, pad, pad, pad,
+                                   cv2.BORDER_CONSTANT, value=0)
+
+        h, w = clean.shape
+        target_h, max_w = 512, 2048
+        scale = min(target_h / h, max_w / w)
+        new_w, new_h = int(w * scale), int(h * scale)
+        clean = cv2.resize(clean, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+
+        clean_rgb = cv2.cvtColor(clean, cv2.COLOR_GRAY2RGB)
+        result = Image.fromarray(clean_rgb)
+
+        if debug:
+            result.show()
+
+        return result
