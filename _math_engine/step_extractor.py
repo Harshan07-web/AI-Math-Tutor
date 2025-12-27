@@ -3,16 +3,7 @@ class StepExtractor:
         pass
 
     def extract_steps(self, solver_output: dict) -> list[dict]:
-        """
-        Converts solver output into standardized step objects.
 
-        Expected solver_output format:
-        {
-            "final_answer": "...",
-            "steps": [ {...}, {...} ],
-            "problem_type": "integration"
-        }
-        """
 
         if "steps" not in solver_output:
             raise ValueError("Solver output does not contain steps")

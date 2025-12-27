@@ -7,17 +7,6 @@ class MathSolver:
         pass
 
     def solve(self, problem_input: dict) -> dict:
-        """
-        Solves a math problem deterministically using SymPy.
-
-        Expected problem_input format:
-        {
-            "problem_type": "integration" | "differentiation" | "equation" | "simplification",
-            "expression": "x**2",
-            "variable": "x",
-            "metadata": {...}   # ignored by solver
-        }
-        """
 
         try:
             problem_type = problem_input["problem_type"]
