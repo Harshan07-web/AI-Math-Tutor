@@ -1,63 +1,47 @@
 import cv2
 import numpy as np
-from PIL import Image
-
+from PIL import Image, ImageEnhance
 
 class Preprocessor:
-    @staticmethod
-    def _deskew(img: np.ndarray) -> np.ndarray:
-        coords = np.column_stack(np.where(img > 0))
-        if coords.shape[0] < 10:
-            return img
-        rect = cv2.minAreaRect(coords)
-        angle = rect[-1]
-        angle = -(90 + angle) if angle < -45 else -angle
-        (h, w) = img.shape
-        center = (w // 2, h // 2)
-        M = cv2.getRotationMatrix2D(center, angle, 1.0)
-        return cv2.warpAffine(img, M, (w, h),
-                              flags=cv2.INTER_CUBIC,
-                              borderMode=cv2.BORDER_CONSTANT,
-                              borderValue=0)
 
     @staticmethod
-    def clean_for_ocr(image: Image.Image, debug: bool = False) -> Image.Image:
-        if image.mode != "RGB":
-            image = image.convert("RGB")
+    def clean(image: Image.Image) -> Image.Image:
+        """
+        Best preprocessing for Math OCR (pix2tex)
+        Returns PIL Image
+        """
 
-        img = np.array(image)
+        if not isinstance(image, Image.Image):
+            raise TypeError("Input must be PIL.Image")
+
+        # Convert PIL → OpenCV
+        img = np.array(image.convert("RGB"))
+
+        # Grayscale
         gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        gray = clahe.apply(gray)
+        # Denoise
+        gray = cv2.fastNlMeansDenoising(gray, None, 30, 7, 21)
 
-        _, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        if np.count_nonzero(bw) < 10:
-            return image
+        # Adaptive Threshold
+        thresh = cv2.adaptiveThreshold(
+            gray,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            31,
+            10
+        )
 
-        kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-        kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        clean = cv2.morphologyEx(bw, cv2.MORPH_OPEN, kernel_open, iterations=1)
-        clean = cv2.morphologyEx(clean, cv2.MORPH_CLOSE, kernel_close, iterations=1)
-        clean = cv2.medianBlur(clean, 3)
+        # Morphological cleaning
+        kernel = np.ones((2, 2), np.uint8)
+        cleaned = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
 
-        clean = Preprocessor._deskew(clean)
+        # Convert back to PIL
+        pil_img = Image.fromarray(cleaned)
 
-        h, w = clean.shape
-        pad = max(10, int(max(h, w) * 0.03))
-        clean = cv2.copyMakeBorder(clean, pad, pad, pad, pad,
-                                   cv2.BORDER_CONSTANT, value=0)
+        # Enhance contrast
+        enhancer = ImageEnhance.Contrast(pil_img)
+        pil_img = enhancer.enhance(2.0)
 
-        h, w = clean.shape
-        target_h, max_w = 512, 2048
-        scale = min(target_h / h, max_w / w)
-        new_w, new_h = int(w * scale), int(h * scale)
-        clean = cv2.resize(clean, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
-
-        clean_rgb = cv2.cvtColor(clean, cv2.COLOR_GRAY2RGB)
-        result = Image.fromarray(clean_rgb)
-
-        if debug:
-            result.show()
-
-        return result
+        return pil_img
