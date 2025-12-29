@@ -30,53 +30,63 @@ doubts about particular steps. The future features are planned to include TTS an
 
 ## CURRENT FOLDER STRUCUTRE 
 
-📦Ai math tutor
- ┣ 📂data
- ┃ ┣ 📜cache
- ┃ ┣ 📜examples
- ┃ ┗ 📜sessions
- ┣ 📂docs
- ┃ ┣ 📜architecture.md
- ┃ ┗ 📜flow.md
- ┣ 📂scripts
- ┃ ┗ 📜steip_env.py
- ┣ 📂_app
- ┃ ┣ 📜config.py
- ┃ ┣ 📜main.py
- ┃ ┣ 📜routes.py
- ┃ ┗ 📜__init__.py
- ┣ 📂_core
- ┃ ┣ 📜controller.py
- ┃ ┣ 📜pipeline.py
- ┃ ┣ 📜state.py
- ┃ ┗ 📜__init__.py
- ┣ 📂_frontend
- ┃ ┣ 📜app.py
- ┃ ┣ 📜assets
- ┃ ┣ 📜components
- ┃ ┗ 📜utils
- ┣ 📂_llm
- ┃ ┣ 📜doubt_handler.py
- ┃ ┣ 📜explainer.py
- ┃ ┣ 📜prompts.py
- ┃ ┗ 📜__init__.py
- ┣ 📂_math_engine
- ┃ ┣ 📜solver.py
- ┃ ┣ 📜step_extractor.py
- ┃ ┣ 📜step_normalizer.py
- ┃ ┗ 📜__init__.py
- ┣ 📂_speech
- ┃ ┣ 📜stt.py
- ┃ ┣ 📜tts.py
- ┃ ┗ 📜__init__.py
- ┣ 📂_vision
- ┃ ┣ 📜ocr.py
- ┃ ┣ 📜preprocessing.py
- ┃ ┗ 📜__init__.py
- ┣ 📜.gitignore
- ┣ 📜LICENSE
- ┣ 📜requirements.txt
-
+Ai math tutor/
+│
+├── data/
+├── cache/
+├── examples/
+├── sessions/
+├── docs/
+│   ├── architecture.md
+│   ├── flow.md
+│
+├── scripts/
+│   ├── step_env.py
+│
+├── _app/
+│   ├── config.py
+│   ├── main.py
+│   ├── routes.py
+│   ├── __init__.py
+│
+├── _core/
+│   ├── controller.py
+│   ├── pipeline.py
+│   ├── state.py
+│   ├── __init__.py
+│
+├── _frontend/
+│   ├── app.py
+│   ├── assets/
+│   ├── components/
+│   ├── utils/
+│   ├── __init__.py
+│
+├── _llm/
+│   ├── doubt_handler.py
+│   ├── explainer.py
+│   ├── prompts.py
+│   ├── __init__.py
+│
+├── _math_engine/
+│   ├── solver.py
+│   ├── step_extractor.py
+│   ├── step_normalizer.py
+│   ├── __init__.py
+│
+├── _vision/
+│   ├── ocr.py
+│   ├── preprocessing.py
+│   ├── __init__.py
+│
+├── _speech/
+│   ├── stt.py
+│   ├── tts.py
+│   ├── __init__.py
+│
+├── .gitignore
+├── LICENSE
+└── requirements.txt
 
  ## HOW TO RUN 
 
