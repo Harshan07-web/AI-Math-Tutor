@@ -4,7 +4,7 @@ sample.jpg
 sample1.png
 test_pipeline.py
 test_solver.py
-tests/test_ocr.py
+tests
 templates/
 index.html
 static/
