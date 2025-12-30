@@ -8,3 +8,5 @@ tests
 templates/
 index.html
 static/
+tests/
+eh.env
