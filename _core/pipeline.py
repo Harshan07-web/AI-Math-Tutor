@@ -3,6 +3,8 @@ from _math_engine.step_extractor import StepExtractor
 from _math_engine.step_normalizer import StepNormalizer
 from _llm.explainer import StepExplainer
 from _llm.doubt_handler import DoubtHandler
+from _vision.ocr import OCRProcessor
+
 
 class Pipeline:
     def __init__(self):
@@ -11,8 +13,20 @@ class Pipeline:
         self.normalizer = StepNormalizer()
         self.explainer = StepExplainer()
         self.doubt = DoubtHandler()
+        self.ocr = OCRProcessor()
 
     def solve_and_explain(self, user_input: str) -> dict:
+
+        if isinstance(user_input, str) and user_input.lower().endswith((".png", ".jpg", ".jpeg")):
+            print("OCR Mode: Extracting math from image...")
+            user_input = self.ocr.read_text(user_input)
+
+            if not user_input or user_input.strip() == "":
+                return {
+                    "error": "OCR failed to detect math expression",
+                    "message": "Try uploading a clearer handwritten or printed math image."
+                }
+
         result = self.solver.solve(user_input)
 
         # ⛔ STOP if solver reported error
