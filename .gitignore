@@ -2,3 +2,6 @@ venv
 sample.jpg
 .env
 sample1.png
+test_pipeline.py
+test_solver.py
+tests/test_ocr.py
