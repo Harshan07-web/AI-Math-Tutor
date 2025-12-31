@@ -1,132 +1,190 @@
 # app.py
 # =================== MUST BE AT TOP ===================
 from dotenv import load_dotenv
-load_dotenv()   # Load Gemini API key BEFORE anything else
+load_dotenv()   # Load environment variables (API keys)
 # =====================================================
 
 import streamlit as st
 from PIL import Image
 import sys
 import os
-import asyncio
 
-# Fix Windows asyncio issue (important for Python 3.12)
-if sys.platform.startswith("win"):
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-# Add project root to Python path
+# Add project root to path so imports work correctly
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.append(PROJECT_ROOT)
+if PROJECT_ROOT not in sys.path:
+    sys.path.append(PROJECT_ROOT)
 
-# ------------------- BACKEND IMPORTS -------------------
-from _vision.ocr import OCRProcessor
-from _math_engine.solver import MathSolver
-from _math_engine.step_extractor import StepExtractor
-from _math_engine.step_normalizer import StepNormalizer
-from _llm.explainer import StepExplainer
-from _llm.doubt_handler import DoubtHandler
+# ------------------- 1. LOAD PIPELINE -------------------
+@st.cache_resource
+def get_pipeline():
+    """
+    Initializes the Pipeline once and caches it.
+    This prevents reloading heavy AI models on every button click.
+    """
+    try:
+        from _core.pipeline import Pipeline
+        return Pipeline()
+    except ImportError as e:
+        st.error(f"Failed to import Pipeline. Ensure 'pipeline.py' is in the same folder. Error: {e}")
+        return None
+    except Exception as e:
+        st.error(f"Critical Error initializing models: {e}")
+        st.info("💡 Tip: If this is a 'pix2tex' error, run: pip install 'pix2tex[gui]'")
+        return None
 
-# ------------------- INITIALIZE BACKEND ----------------
-ocr = OCRProcessor()
-solver = MathSolver()
-extractor = StepExtractor()
-normalizer = StepNormalizer()
-explainer = StepExplainer()
-doubt_handler = DoubtHandler()
-
-# ------------------- STREAMLIT UI ---------------------
+# ------------------- 2. PAGE CONFIG & STATE -------------------
 st.set_page_config(
     page_title="AI Math Tutor",
     page_icon="🧮",
     layout="wide"
 )
 
-st.title("🧮 AI Math Tutor")
+# Initialize Session State to remember history
+if "history" not in st.session_state:
+    st.session_state.history = {
+        "latex": "",
+        "solution": None,  # Will hold the dictionary returned by pipeline
+    }
 
-# Sidebar
-choice = st.sidebar.selectbox(
-    "Choose Mode",
-    ["Solve Math Problem", "Ask Doubt"]
-)
+# Load the pipeline
+with st.spinner("🧠 Waking up the AI Tutor..."):
+    pipeline = get_pipeline()
 
-# ------------------- MODE 1: SOLVE --------------------
-if choice == "Solve Math Problem":
-    st.subheader("Upload an image or type your math problem")
+if not pipeline:
+    st.stop()  # Stop execution if pipeline failed to load
 
-    input_type = st.radio("Input type", ["Image", "Text"])
+# ------------------- 3. SIDEBAR NAVIGATION -------------------
+with st.sidebar:
+    st.title("Navigation")
+    mode = st.radio("Select Mode", ["📸 Solve Problem", "🙋‍♂️ Ask Doubt"])
+    
+    st.markdown("---")
+    st.markdown("### 📝 Current Context")
+    if st.session_state.history["solution"]:
+        st.success("✅ Solution Loaded")
+        if st.button("Clear History"):
+            st.session_state.history = {"latex": "", "solution": None}
+            st.rerun()
+    else:
+        st.caption("No problem solved yet.")
 
-    problem_input = ""
+# ------------------- 4. MODE: SOLVE PROBLEM -------------------
+if mode == "📸 Solve Problem":
+    st.title("🧮 Solve & Explain")
+    st.markdown("Upload a math problem image or type the LaTeX directly.")
 
-    if input_type == "Image":
-        uploaded_file = st.file_uploader(
-            "Upload an image of the math problem",
-            type=["png", "jpg", "jpeg"]
-        )
+    # --- Input Section ---
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        input_method = st.radio("Input Method", ["Image", "Text"], horizontal=True)
 
+    user_input = None
+
+    if input_method == "Image":
+        uploaded_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
         if uploaded_file:
             image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Image", use_column_width=True)
-
-            latex = ocr.image_to_latex(image)
-            st.markdown("**Detected Math Expression (LaTeX):**")
-            st.latex(latex)
-
-            problem_input = latex
+            st.image(image, caption="Your Problem", width=400)
+            user_input = image
     else:
-        problem_input = st.text_area("Type your math problem here:")
+        text_input = st.text_area("Enter Math Expression (LaTeX or standard)", value=st.session_state.history["latex"])
+        if text_input:
+            user_input = text_input
 
-    if st.button("Solve"):
-        if not problem_input.strip():
-            st.warning("Please provide a math problem.")
+    # --- Solve Button ---
+    if st.button("🚀 Solve Now", type="primary"):
+        if not user_input:
+            st.warning("Please upload an image or enter text first.")
         else:
-            solution = solver.solve(problem_input)
+            with st.spinner("🔍 Reading, Solving & Generating Explanation..."):
+                # CALL THE PIPELINE
+                result = pipeline.solve_and_explain(user_input)
+                
+                # Check for pipeline errors
+                if result.get("error"):
+                    st.error(f"❌ Error: {result.get('message')}")
+                    if result.get("hint"):
+                        st.info(f"💡 Hint: {result.get('hint')}")
+                else:
+                    # Save to session state
+                    st.session_state.history["solution"] = result
+                    if isinstance(user_input, str):
+                        st.session_state.history["latex"] = user_input
+                    else:
+                        st.session_state.history["latex"] = result.get("expression", "")
+                    
+                    st.rerun() # Refresh to show results cleanly
 
-            raw_steps = extractor.extract_steps(solution)
-            normalized_steps = normalizer.normalize_steps(raw_steps)
+    # --- Results Display ---
+    sol = st.session_state.history["solution"]
+    if sol:
+        st.markdown("---")
+        
+        # 1. The Expression
+        st.subheader("1. Identified Problem")
+        st.latex(sol.get("expression", ""))
 
-            st.markdown("### ✅ Solution")
-            st.write(solution.get("final_answer", "No solution found"))
+        # 2. The Final Answer
+        st.subheader("2. Final Answer")
+        st.info(sol.get("final_answer", "N/A"))
 
-            st.markdown("### 📋 Steps")
-            for step in normalized_steps:
-                st.write(f"**Step {step['step_number']}**: {step['output']}")
+        # 3. Steps
+        with st.expander("📂 View Step-by-Step Derivation", expanded=True):
+            steps = sol.get("steps", [])
+            if steps:
+                for step in steps:
+                    st.markdown(f"**Step {step['step_number']}**")
+                    st.latex(step['output'])
+            else:
+                st.write("No intermediate steps available.")
 
-            st.markdown("### 🤓 Explanation (Gemini 2.5)")
-            explanation = explainer.explain_steps(
-                normalized_steps,
-                solution.get("final_answer", "")
-            )
-            st.write(explanation)
+        # 4. Explanation
+        st.subheader("3. AI Tutor Explanation")
+        st.markdown(sol.get("explanation", ""))
 
-# ------------------- MODE 2: DOUBT --------------------
-elif choice == "Ask Doubt":
-    st.subheader("Ask your doubt about a solved problem")
+# ------------------- 5. MODE: ASK DOUBT -------------------
+elif mode == "🙋‍♂️ Ask Doubt":
+    st.title("💬 Doubt Session")
 
-    problem = st.text_area("Original Problem")
-    steps_input = st.text_area(
-        "Solution Steps (one step per line)"
-    )
-    doubt = st.text_area("Your doubt")
+    # Check context
+    sol = st.session_state.history["solution"]
+    
+    if not sol:
+        st.warning("⚠️ Please solve a problem in the 'Solve Problem' tab first.")
+        st.markdown("I need to know what math problem we are talking about before I can answer doubts!")
+    else:
+        # Display Context (Small)
+        with st.expander("Reference: Current Problem", expanded=False):
+            st.latex(sol.get("expression", ""))
+            st.write(f"**Final Answer:** {sol.get('final_answer')}")
 
-    if st.button("Get Doubt Answer"):
-        if not problem or not steps_input or not doubt:
-            st.warning("Please fill all fields.")
-        else:
-            steps_list = [
-                {
-                    "step_number": i + 1,
-                    "output": s,
-                    "explanation_hint": ""
-                }
-                for i, s in enumerate(steps_input.split("\n"))
-                if s.strip()
-            ]
+        st.subheader("What's confusing you?")
+        
+        col_step, col_q = st.columns([1, 3])
+        
+        with col_step:
+            # Dropdown to select step number (0 could mean "General")
+            steps = sol.get("steps", [])
+            step_options = [s['step_number'] for s in steps]
+            selected_step = st.selectbox("Related Step #", step_options)
+        
+        with col_q:
+            question = st.text_input("Your Question", placeholder="e.g., Why did we divide by 2 here?")
 
-            answer = doubt_handler.answer_doubt(
-                user_question=doubt,
-                normalized_steps=steps_list,
-                final_answer="N/A"
-            )
-
-            st.markdown("### 💡 Doubt Answer")
-            st.write(answer)
+        if st.button("🤔 Ask Tutor"):
+            if not question:
+                st.warning("Please type a question.")
+            else:
+                with st.spinner("Analyzing context..."):
+                    # CALL THE PIPELINE DOUBT HANDLER
+                    # Note: Using the signature defined in your pipeline.py
+                    try:
+                        answer = pipeline.answer_doubt(
+                            step_number=selected_step, 
+                            question=question
+                        )
+                        st.markdown("### 💡 Tutor's Answer")
+                        st.success(answer)
+                    except Exception as e:
+                        st.error(f"Error processing doubt: {e}")

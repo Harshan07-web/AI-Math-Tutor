@@ -142,4 +142,4 @@ class Pipeline:
         return result
 
     def answer_doubt(self, step_number: int, question: str):
-        return self.doubt.handle_doubt(step_number, question)
+        return self.doubt.answer_doubt(step_number, question)

@@ -10,7 +10,6 @@ class OCRProcessor:
         self.model = LatexOCR()  # pix2tex auto-detects device
 
     def image_to_latex(self, image: Image.Image) -> str:
-
         if not isinstance(image, Image.Image):
             raise TypeError("Input must be PIL.Image")
 
