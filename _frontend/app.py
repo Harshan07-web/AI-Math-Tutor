@@ -3,12 +3,12 @@ import streamlit as st
 from PIL import Image
 
 # Import your backend modules
-from vision.ocr import OCRProcessor
-from math_engine.solver import MathSolver
-from math_engine.step_extractor import StepExtractor
-from math_engine.step_normalizer import StepNormalizer
-from llm.explainer import StepExplainer, MathExplainer
-from llm.doubt_handler import DoubtHandler
+from _vision.ocr import OCRProcessor
+from _math_engine.solver import MathSolver
+from _math_engine.step_extractor import StepExtractor
+from _math_engine.step_normalizer import StepNormalizer
+from _llm.explainer import StepExplainer, MathExplainer
+from _llm.doubt_handler import DoubtHandler
 
 # Initialize backend components
 ocr = OCRProcessor()
