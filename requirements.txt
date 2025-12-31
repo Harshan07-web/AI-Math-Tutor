@@ -7,5 +7,5 @@ pix2tex
 sympy
 langchain_google_genai
 dotenv
-
+ antlr4
 
