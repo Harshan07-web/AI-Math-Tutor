@@ -1,6 +1,14 @@
 # app.py
 import streamlit as st
 from PIL import Image
+import sys
+import os
+
+# Add project root to Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+
+
 
 # Import your backend modules
 from _vision.ocr import OCRProcessor
