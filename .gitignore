@@ -1,2 +1,12 @@
 venv
 sample.jpg
+.env
+sample1.png
+test_pipeline.py
+test_solver.py
+tests
+templates/
+index.html
+static/
+tests/
+eh.env

@@ -4,29 +4,31 @@ class StepExtractor:
 
     def extract_steps(self, solver_output: dict) -> list[dict]:
         """
-        Converts solver output into standardized step objects.
-
-        Expected solver_output format:
-        {
-            "final_answer": "...",
-            "steps": [ {...}, {...} ],
-            "problem_type": "integration"
-        }
+        Convert raw solver steps into ordered, numbered step objects.
         """
 
         if "steps" not in solver_output:
-            raise ValueError("Solver output does not contain steps")
+            return []
 
         extracted_steps = []
 
         for idx, step in enumerate(solver_output["steps"], start=1):
-            extracted_steps.append({
-                "step_number": idx,
-                "type": step.get("type"),
-                "rule": step.get("rule", None),
-                "input": step.get("input"),
-                "output": step.get("output"),
-                "hint": step.get("explanation_hint")
-            })
+            if isinstance(step, dict):
+                extracted_steps.append({
+                    "step_number": idx,
+                    "type": step.get("type", "unknown"),
+                    "input": step.get("input", None),
+                    "output": step.get("output", None),
+                    "hint": step.get("hint", None)
+                })
+            else:
+                # Fallback string formatting if necessary
+                extracted_steps.append({
+                    "step_number": idx,
+                    "type": "info",
+                    "input": None,
+                    "output": str(step),
+                    "hint": None
+                })
 
         return extracted_steps

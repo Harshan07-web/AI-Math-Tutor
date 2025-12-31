@@ -2,7 +2,7 @@ import streamlit as st
 import numpy as np
 from PIL import Image
 
-from _vision import OCRProcessor
+from _vision.ocr import OCRProcessor
 
 # -------------------------
 # Streamlit Page Config
