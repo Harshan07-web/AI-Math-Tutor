@@ -1,145 +1,148 @@
 from PIL import Image
+from sympy import Eq, sstr
+
+from _vision.ocr import OCRProcessor
 from _math_engine.solver import MathSolver
 from _math_engine.step_extractor import StepExtractor
 from _math_engine.step_normalizer import StepNormalizer
 from _llm.explainer import StepExplainer
 from _llm.doubt_handler import DoubtHandler
-from _vision.ocr import OCRProcessor
-import os
-import re
+from _math_engine.latex_to_sympy import LatexToSympyConverter
 
 
 class Pipeline:
+    """
+    End-to-end pipeline:
+    Image / Text → OCR → LaTeX → SymPy → Solve → Steps → Explain
+    """
+
     def __init__(self):
-        self.solver = MathSolver()
+        self.ocr = OCRProcessor(use_preprocessing=True)
+        self.solver = MathSolver()          # ❌ DO NOT MODIFY SOLVER
         self.extractor = StepExtractor()
         self.normalizer = StepNormalizer()
         self.explainer = StepExplainer()
         self.doubt = DoubtHandler()
-        self.ocr = OCRProcessor(use_preprocessing=True)
 
-    def _clean_math_expr(self, text: str) -> str:
-        import re
+    # ------------------------------------------------------------
+    # MAIN ENTRY
+    # ------------------------------------------------------------
+    def solve_and_explain(self, user_input):
+        latex_expr = None
 
-        # Remove font styling wrappers: \mathit{x}, \mathrm{x}, \mathsf{x}, etc.
-        text = re.sub(r"\\math[a-zA-Z]*\{(.*?)\}", r"\1", text)
-
-        # Remove any leftover LaTeX markup: \quad, \qquad, \, etc
-        text = re.sub(r"\\[a-zA-Z]+", "", text)
-
-        # Replace LaTeX \frac with (a)/(b)
-        text = re.sub(r"\\frac\{(.+?)\}\{(.+?)\}", r"(\1)/(\2)", text)
-
-        # Fix common OCR mistakes: "2.r" → "2*x"
-        text = re.sub(r"(\d)\.(?=[a-zA-Z])", r"\1*", text)
-
-        # Replace "^" with "**" for SymPy
-        text = text.replace("^", "**")
-
-        # Remove non-math characters except math symbols
-        text = re.sub(r"[^0-9a-zA-Z+\-*/=().]", "", text)
-
-        # Fix `r` wrongly used as variable: replace with x if surrounded by numbers/operators
-        text = re.sub(r"(?<=\d)r(?=[+\-*/=])", "x", text)
-
-        # Cleanup duplicate operators (rare but helpful)
-        text = re.sub(r"\*{2,}", "**", text)
-
-        return text.strip()
-
-
-    def solve_and_explain(self, user_input) -> dict:
-
-        # 🔍 Detect if input is a filepath image
-        if isinstance(user_input, str) and user_input.lower().endswith((".png", ".jpg", ".jpeg")):
-            print("📸 OCR Mode: Image File Detected")
-
-            try:
-                img = Image.open(user_input)
-                user_input = self.ocr.image_to_latex(img)
-            except Exception:
-                return {
-                    "error": "File error",
-                    "message": "Cannot load the image file.",
-                    "expression": ""
-                }
-
-        # 🖼 Detect if input is a PIL image object
-        elif isinstance(user_input, Image.Image):
-            print("🖼 OCR Mode: PIL Image Detected")
+        # -------------------------
+        # 🖼 IMAGE INPUT
+        # -------------------------
+        if isinstance(user_input, Image.Image):
+            print("🖼 OCR Mode: PIL Image detected")
             latex_expr = self.ocr.image_to_latex(user_input)
 
-            if not latex_expr or latex_expr.strip() == "":
+            if not latex_expr:
                 return {
                     "error": "OCR failed",
-                    "message": "Could not extract math from image",
+                    "message": "Could not read math from image",
                     "expression": ""
                 }
 
-            print("\n📐 OCR Raw Output:", latex_expr)
+        # -------------------------
+        # ✍️ TEXT INPUT
+        # -------------------------
+        elif isinstance(user_input, str):
+            latex_expr = user_input.strip()
 
-            # 🧽 Clean Latex → SymPy-friendly format
-            user_input = self._clean_math_expr(latex_expr)
-            print("✨ Cleaned Expression:", user_input)
-
-            if not user_input or not isinstance(user_input, str):
+            if not latex_expr:
                 return {
-                    "error": "OCR failed",
-                    "message": "The OCR did not extract valid math from the image.",
+                    "error": "Empty input",
+                    "message": "Please enter a math problem",
                     "expression": ""
                 }
 
-
-        # 🧹 Validate OCR output or text input
-        if not isinstance(user_input, str) or user_input.strip() == "":
+        else:
             return {
-                "error": "Invalid or unreadable input",
-                "message": "Provide a valid math expression or a clear math image.",
+                "error": "Invalid input",
+                "message": "Expected image or math text",
                 "expression": ""
             }
 
-        # 🧠 Solve
-        result = self.solver.solve(user_input)
+        print("\n📐 LaTeX Input:")
+        print(latex_expr)
 
-# 🚨 Validate solver output before accessing dictionary keys
+        # -------------------------
+        # 🔁 LaTeX → SymPy
+        # -------------------------
+        try:
+            sympy_expr = LatexToSympyConverter.to_sympy(latex_expr)
+        except Exception as e:
+            return {
+                "error": "LaTeX parsing failed",
+                "message": str(e),
+                "expression": latex_expr
+            }
+
+        print("\n🧠 SymPy Parsed Expression:")
+        print(sympy_expr)
+
+        # -------------------------
+        # 🧮 SOLVE (🔥 FIXED SECTION)
+        # -------------------------
+        try:
+            # ✅ Convert SymPy → solver-safe string
+            if isinstance(sympy_expr, Eq):
+                lhs = sstr(sympy_expr.lhs)   # forces explicit *
+                rhs = sstr(sympy_expr.rhs)
+                problem_str = f"{lhs} = {rhs}"
+            else:
+                problem_str = sstr(sympy_expr)
+
+            print("\n🧮 Solver Input:")
+            print(problem_str)
+
+            # 🔑 ONLY public solver API
+            result = self.solver.solve(problem_str)
+
+        except Exception as e:
+            return {
+                "error": "Solver failure",
+                "message": str(e),
+                "expression": latex_expr
+            }
+
         if not isinstance(result, dict):
             return {
-                "error": "Internal solver failure",
-                "message": "The math solver could not process the expression.",
-                "expression": user_input
+                "error": "Invalid solver response",
+                "message": "Solver did not return a valid result",
+                "expression": latex_expr
             }
 
-        result["expression"] = user_input  # always store expression
+        # -------------------------
+        # 🪜 STEP EXTRACTION
+        # -------------------------
+        try:
+            steps = self.extractor.extract_steps(result)
+            steps = self.normalizer.normalize_steps(steps)
+        except Exception:
+            steps = result.get("steps", [])
 
-
-        # ⛔ Error handling from the solver
-        if result.get("error"):
-            return {
-                "error": result["error"],
-                "message": "I couldn't understand that. Try rewriting the math clearly.",
-                "hint": "Example: d/dx(x^2 + 3*x) or (x^2 + 3*x)^2"
-            }
-
-        # ❓ Clarification required case
-        if result.get("requires_clarification"):
-            return result
-
-        final_answer = result.get("final_answer", "")
-        problem_type = result.get("problem_type", "")
-
-        # 🪜 Extract → Normalize → Explain
-        extracted_steps = self.extractor.extract_steps(result)
-        normalized_steps = self.normalizer.normalize_steps(extracted_steps)
-
+        # -------------------------
+        # 🧠 EXPLANATION (LLM)
+        # -------------------------
         explanation = self.explainer.explain_steps(
-            normalized_steps=normalized_steps,
-            final_answer=final_answer,
-            problem_type=problem_type
+            normalized_steps=steps,
+            final_answer=result.get("final_answer"),
+            problem_type=result.get("problem_type")
         )
 
-        result["steps"] = normalized_steps
+        # -------------------------
+        # ✅ FINAL PAYLOAD
+        # -------------------------
+        result["expression"] = latex_expr
+        result["steps"] = steps
         result["explanation"] = explanation
+
         return result
 
-    def answer_doubt(self, step_number: int, question: str):
+    # ------------------------------------------------------------
+    # 🙋 DOUBT HANDLING
+    # ------------------------------------------------------------
+    def answer_doubt(self, step_number, question):
         return self.doubt.answer_doubt(step_number, question)

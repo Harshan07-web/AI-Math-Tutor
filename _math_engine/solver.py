@@ -1,6 +1,21 @@
+import os
 import sympy as sp
-from sympy import Eq, simplify
+from sympy import Eq, Integral, simplify
 import re
+
+# optional helpers for image OCR
+try:
+    from PIL import Image
+    import pytesseract
+except Exception:
+    Image = None
+    pytesseract = None
+
+# try to use local latex -> sympy converter if present
+try:
+    from .latex_to_sympy import latex_to_sympy
+except Exception:
+    latex_to_sympy = None
 
 
 class MathSolver:
@@ -8,31 +23,137 @@ class MathSolver:
         pass
 
     def solve(self, user_input: str) -> dict:
-        """Classify automatically based on notation & solve."""
+        """Classify automatically based on notation & solve.
+        Accepts plain text, LaTeX, or path to an image containing math.
+        """
 
-        cleaned = user_input.replace("^", "**").strip()
+        # If input is an image path, extract text/LaTeX first
+        if isinstance(user_input, str) and self._is_image_path(user_input):
+            try:
+                extracted = self._process_image(user_input)
+                # if OCR returns something, continue solving that
+                if extracted:
+                    user_input = extracted
+            except Exception as e:
+                return {"error": "OCR failed", "message": str(e)}
+
+        cleaned = self._to_sympy_friendly(user_input.strip())
 
         try:
+            # -------------------------
+            # EQUATIONS
+            # -------------------------
             if "=" in cleaned:
                 return self._solve_equation(cleaned)
 
-            # Detect differentiation formats
-            if cleaned.lower().startswith(("d/dx", "diff")):
+            # -------------------------
+            # DIFFERENTIATION
+            # -------------------------
+            if cleaned.lower().startswith(("d/dx", "diff", "deriv", "d/d")) or "d/d" in cleaned.lower():
                 return self._solve_differentiation(cleaned)
 
-            # Detect integration formats
-            if cleaned.startswith("∫") or "integrate" in cleaned.lower():
-                return self._solve_integration(self._extract_integrand(user_input))
+            # -------------------------
+            # INTEGRATION
+            # -------------------------
+            if cleaned.startswith("∫") or "integrate" in cleaned.lower() or cleaned.startswith("int("):
+                integrand = self._extract_integrand(cleaned)
+                return self._solve_integration(integrand)
 
-        except Exception:
+            # -------------------------
+            # FALLBACK: try to simplify/evaluate
+            # -------------------------
+            expr = sp.sympify(cleaned)
+            simplified = sp.simplify(expr)
+
+            return {
+                "final_answer": sp.sstr(simplified),
+                "steps": [f"Simplify the expression: {simplified}"],
+                "problem_type": "simplification",
+                "latex": f"$$ {sp.latex(simplified)} $$"
+            }
+
+        except Exception as e:
             return {
                 "error": f"I couldn't understand the input: {user_input}",
-                "message": "Try rewriting using normal math syntax.",
-                "hint": "Example: x^2 - 5x + 6 = 0 OR ∫(x^2 + 2)"
+                "message": str(e),
+                "hint": "Example: 2x-3=7 | d/dx(x^2) | ∫ x^2 dx | path/to/image.png"
             }
 
     # --------------------------------------------------------------------
-    # ➕ EQUATIONS (Linear & Quadratic)
+    # IMAGE / OCR HELPERS
+    # --------------------------------------------------------------------
+    def _is_image_path(self, path: str) -> bool:
+        if not isinstance(path, str):
+            return False
+        if not os.path.isfile(path):
+            return False
+        return os.path.splitext(path)[1].lower() in {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif"}
+
+    def _process_image(self, path: str) -> str:
+        """Try to extract LaTeX or plain math text from an image file."""
+        if Image is None or pytesseract is None:
+            raise RuntimeError("PIL/pytesseract not available for OCR")
+
+        img = Image.open(path).convert("L")
+        # basic preprocessing: threshold can be added here if needed
+        raw = pytesseract.image_to_string(img, config="--psm 6")
+        raw = raw.strip()
+        if not raw:
+            raise ValueError("No text detected in image")
+
+        # try to extract LaTeX between $...$ or \[...\]
+        m = re.search(r"\$+(.+?)\$+|\\\[(.+?)\\\]|\\\((.+?)\\\)", raw, re.S)
+        if m:
+            # group will have the captured latex
+            for g in m.groups():
+                if g:
+                    return g.strip()
+
+        # fallback: return the raw OCR text (will be cleaned later)
+        return raw
+
+    # --------------------------------------------------------------------
+    # NORMALIZATION / LATEX -> SYMPY
+    # --------------------------------------------------------------------
+    def _to_sympy_friendly(self, text: str) -> str:
+        text = text.replace("^", "**")
+        # remove displaystyle and common LaTeX wrappers
+        text = re.sub(r"\\displaystyle", "", text)
+        text = re.sub(r"\\left|\\right", "", text)
+        text = text.strip()
+        # if it looks like LaTeX and converter available, use it
+        if latex_to_sympy and (r"\frac" in text or r"\sqrt" in text or "\\" in text or "$" in text):
+            try:
+                converted = latex_to_sympy(text)
+                if converted:
+                    return converted
+            except Exception:
+                pass
+
+        # simple replacements to help sympy parse
+        text = text.replace(r"\cdot", "*")
+        text = text.replace(r"\times", "*")
+        text = text.replace(" ", "")
+        # common integral notation: ∫ f dx -> int(f, x)
+        text = re.sub(r"∫\s*(.+)dx", r"int(\1, x)", text)
+        # simple derivative short-hands
+        text = re.sub(r"d/d([a-zA-Z])\s*\((.+)\)", r"diff(\2, \1)", text)
+        # convert LaTeX sums/products (basic form) to SymPy
+        # e.g. \sum_{k=1}^{n} f(k)  -> Sum(f(k), (k, 1, n))
+        text = re.sub(
+            r"\\sum_\{\s*([a-zA-Z]+)\s*=\s*([^}]+)\s*\}\^\{\s*([^}]+)\s*\}\s*(.+)",
+            r"Sum(\4, (\1, \2, \3))",
+            text
+        )
+        text = re.sub(
+            r"\\prod_\{\s*([a-zA-Z]+)\s*=\s*([^}]+)\s*\}\^\{\s*([^}]+)\s*\}\s*(.+)",
+            r"Product(\4, (\1, \2, \3))",
+            text
+        )
+        return text
+
+    # --------------------------------------------------------------------
+    # ➕ EQUATIONS
     # --------------------------------------------------------------------
     def _solve_equation(self, eq_str: str) -> dict:
         left, right = eq_str.split("=", 1)
@@ -40,214 +161,141 @@ class MathSolver:
         right = sp.sympify(right)
 
         eq = Eq(left, right)
-        var = list(eq.free_symbols)[0] if eq.free_symbols else sp.Symbol("x")
+        vars_ = list(eq.free_symbols)
+        var = vars_[0] if vars_ else sp.Symbol("x")
 
-        # Rewrite to standard form (move everything to LHS)
         std_form = simplify(left - right)
 
-        steps = [
-            f"1. Rewrite in standard form: {sp.sstr(std_form)} = 0"
-        ]
+        steps = [f"1. Rewrite in standard form: {std_form} = 0"]
 
-        deg = sp.degree(std_form, var)
+        deg = None
+        try:
+            deg = sp.degree(std_form, var)
+        except Exception:
+            deg = None
 
         if deg == 1:
-            # Linear equation
-            solution = sp.solve(eq, var)
+            sol = sp.solve(eq, var)
             steps.append("2. Solve by isolating the variable")
-            return self._format_response(solution, steps, "equation")
+            return self._format_response(sol, steps, "equation")
 
-        elif deg == 2:
-            # Quadratic: Try factorization
+        if deg == 2:
             factored = sp.factor(std_form)
-
             if factored != std_form:
-                steps.append(
-                    f"2. Factor the quadratic: {sp.sstr(factored)} = 0"
-                )
-                roots = sp.solve(eq, var)
-                steps.append("3. Set each factor = 0 and solve")
-                return self._format_response(roots, steps, "equation")
+                steps.append(f"2. Factor: {factored} = 0")
+                sol = sp.solve(eq, var)
+                steps.append("3. Solve each factor")
+                return self._format_response(sol, steps, "equation")
 
-            # Fallback to quadratic formula
-            steps.append("2. Use Quadratic Formula")
-            a = std_form.as_coefficients_dict()[var**2]
-            b = std_form.as_coefficients_dict()[var]
-            c = std_form.as_coefficients_dict().get(1, 0)
-
-            D = b**2 - 4*a*c
-            steps.append(f"3. Compute discriminant: D = {sp.sstr(D)}")
-
-            x1 = (-b + sp.sqrt(D)) / (2 * a)
-            x2 = (-b - sp.sqrt(D)) / (2 * a)
-
-            solution = [sp.simplify(x1), sp.simplify(x2)]
-            steps.append("4. Apply quadratic formula and simplify")
-
-            return self._format_response(solution, steps, "equation")
-
-        else:
-            # fallback generic solver
-            solution = sp.solve(eq, var)
-            steps.append("2. Solve equation using symbolic solver")
-            return self._format_response(solution, steps, "equation")
+        sol = sp.solve(eq, var)
+        steps.append("2. Solve using symbolic solver")
+        return self._format_response(sol, steps, "equation")
 
     # --------------------------------------------------------------------
-    # 🔁 Shared Formatting
+    # FORMAT
     # --------------------------------------------------------------------
     def _format_response(self, solution, steps, ptype):
-        # Convert to readable strings
-        if isinstance(solution, list):
-            sol_str = ", ".join([sp.sstr(s) for s in solution])
-        else:
-            sol_str = sp.sstr(solution)
-
+        sol_str = ", ".join(map(str, solution)) if isinstance(solution, (list, tuple)) else str(solution)
+        # convert solution to a LaTeX-friendly string
+        try:
+            latex_repr = sp.latex(solution)
+        except Exception:
+            latex_repr = sol_str
         return {
-            "final_answer": f"{sol_str}",
+            "final_answer": sol_str,
             "steps": steps,
             "problem_type": ptype,
-            "latex": f"$$ {sp.latex(solution)} $$"
+            "latex": f"$$ {latex_repr} $$"
         }
 
-    # ------------------------------------------------------------
-    # Integration
-    # ------------------------------------------------------------
+    # --------------------------------------------------------------------
+    # INTEGRATION
+    # --------------------------------------------------------------------
     def _extract_integrand(self, text: str) -> str:
-        """Extract integrand & set default variable."""
         text = text.replace("^", "**")
-
-        # ∫( ... )dx   → extract inside parenthesis
-        match = re.search(r"∫\(?(.+?)\)?dx", text.replace(" ", ""))
-        if match:
-            return match.group(1)
-
-        # ∫ x^2        → no dx → assume x
-        if text.startswith("∫"):
-            return text[1:]
-
-        # Integrate x^2 + 2
-        if "integrate" in text.lower():
-            return text.lower().replace("integrate", "").strip()
-
-        raise ValueError("Unable to detect integrand")
+        # try to find int(expr, var) or integrate(expr, var) or ∫...dx
+        m = re.search(r"int\(\s*(.+?)\s*,\s*([a-zA-Z])\s*\)", text)
+        if m:
+            return m.group(1)
+        m = re.search(r"integrate\(\s*(.+?)\s*(,\s*([a-zA-Z]))?\s*\)", text, re.I)
+        if m:
+            return m.group(1)
+        m = re.search(r"∫\s*\(?(.+?)\)?\s*d([a-zA-Z])", text)
+        if m:
+            return m.group(1)
+        # fallback: try to strip 'integrate' or '∫' markers
+        text = re.sub(r"integrate", "", text, flags=re.I)
+        text = text.lstrip("∫")
+        return text
 
     def _solve_integration(self, expr_str: str) -> dict:
-        expr = sp.sympify(expr_str)
+        expr = sp.sympify(self._to_sympy_friendly(expr_str))
         var = self._infer_variable(expr_str)
-
-        steps = []
-        if isinstance(expr, sp.Add):
-            terms = expr.args
-            steps.append(f"1. Break into separate integrals: {expr}")
-
-            integrated_terms = []
-            step = 2
-
-            for term in terms:
-                result = sp.integrate(term, var)
-                rule = "constant rule" if term.is_Number else "power rule"
-
-                steps.append(f"{step}. Apply {rule}: ∫{term} dx = {result}")
-                step += 1
-                integrated_terms.append(result)
-
-            final = sum(integrated_terms)
-        else:
-            final = sp.integrate(expr, var)
-            steps.append(f"1. Apply power rule: ∫{expr} dx = {final}")
+        result = sp.integrate(expr, var)
 
         return {
-            "final_answer": f"{sp.sstr(final)} + C",
-            "steps": steps,
-            "problem_type": "integration"
+            "final_answer": f"{result} + C",
+            "steps": [f"Integrate with respect to {var}"],
+            "problem_type": "integration",
+            "latex": f"$$ {sp.latex(result)} + C $$"
         }
 
-    # ------------------------------------------------------------
-    # Differentiation
-    # ------------------------------------------------------------
+    # --------------------------------------------------------------------
+    # DIFFERENTIATION
+    # --------------------------------------------------------------------
     def _solve_differentiation(self, user_input: str) -> dict:
         expr_txt = user_input.replace("^", "**")
 
-        # Extract expression inside d/dx(...)
-        match = re.search(r"d/dx\s*\((.+)\)", expr_txt, flags=re.IGNORECASE)
-        if not match:
-            # Try diff(expr, x)
-            match = re.search(r"diff\s*\((.+),\s*([a-zA-Z]+)\s*\)", expr_txt, flags=re.IGNORECASE)
-            if not match:
-                return {
-                    "error": f"Could not understand differentiation input: {user_input}",
-                    "message": "Try: d/dx(x^2) or diff(sin(x), x)"
-                }
-            expr_str = match.group(1)
-            var = sp.Symbol(match.group(2))
+        m = re.search(r"d/d([a-zA-Z])\s*\((.+)\)", expr_txt, re.I)
+        if m:
+            var = sp.Symbol(m.group(1))
+            expr = sp.sympify(self._to_sympy_friendly(m.group(2)))
         else:
-            expr_str = match.group(1)
-            var = sp.Symbol("x")
+            m = re.search(r"diff\(\s*(.+?)\s*,\s*([a-zA-Z])\s*\)", expr_txt, re.I)
+            if not m:
+                # try simple shorthand d/dx f where f follows
+                m2 = re.search(r"d/d([a-zA-Z])\s+(.+)", expr_txt)
+                if m2:
+                    var = sp.Symbol(m2.group(1))
+                    expr = sp.sympify(self._to_sympy_friendly(m2.group(2)))
+                else:
+                    return {"error": "Couldn't parse differentiation input"}
 
-        try:
-            expr = sp.sympify(expr_str)
-        except Exception:
-            return {
-                "error": f"SymPy could not parse expression: {expr_str}",
-                "message": "Rewrite using standard symbols: ^ → **, sin(x), etc."
-            }
+            else:
+                var = sp.Symbol(m.group(2))
+                expr = sp.sympify(self._to_sympy_friendly(m.group(1)))
 
-        steps = []
-        final = None
-
-        # ---- Quotient Rule ----
-        if isinstance(expr, sp.Mul) and any(isinstance(a, sp.Pow) and a.exp == -1 for a in expr.args):
-            f = expr.args[0]
-            g = expr.args[1].base
-            f_prime, g_prime = sp.diff(f, var), sp.diff(g, var)
-            final = (f_prime * g - f * g_prime) / (g ** 2)
-            steps.extend([
-                f"1️⃣ Identify quotient: f={f}, g={g}",
-                f"2️⃣ f'(x) = {f_prime}",
-                f"3️⃣ g'(x) = {g_prime}",
-                "4️⃣ Apply quotient rule: (f/g)' = (f'g - fg') / g²",
-                f"5️⃣ Final result = {final}"
-            ])
-
-        # ---- Product Rule ----
-        elif expr.is_Mul:
-            f, g = expr.as_ordered_factors()
-            f_prime, g_prime = sp.diff(f, var), sp.diff(g, var)
-            final = f_prime * g + f * g_prime
-            steps.extend([
-                f"1️⃣ Identify product: f={f}, g={g}",
-                f"2️⃣ f'(x) = {f_prime}",
-                f"3️⃣ g'(x) = {g_prime}",
-                "4️⃣ Apply product rule: (fg)' = f'g + fg'",
-                f"5️⃣ Final result = {final}"
-            ])
-
-        # ---- Chain Rule ----
-        elif expr.has(sp.sin) or expr.has(sp.cos) or isinstance(expr, sp.Pow):
-            u = expr.args[0]
-            final = sp.diff(expr, var)
-            steps.extend([
-                f"1️⃣ Identify inner function u = {u}",
-                f"2️⃣ du/dx = {sp.diff(u, var)}",
-                "3️⃣ Apply chain rule",
-                f"4️⃣ Final result = {final}"
-            ])
-
-        # ---- Basic Differentiation ----
-        else:
-            final = sp.diff(expr, var)
-            steps.append(f"1️⃣ Derivative = {final}")
+        result = sp.diff(expr, var)
 
         return {
-            "final_answer": sp.sstr(final),
-            "steps": steps,
+            "final_answer": str(result),
+            "steps": [f"Differentiate with respect to {var}"],
             "problem_type": "differentiation",
-            "latex": f"$$ {sp.latex(final)} $$"
+            "latex": f"$$ {sp.latex(result)} $$"
         }
 
-    # ------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------
-    def _infer_variable(self, expr_str: str):
-        symbols = re.findall(r"[a-zA-Z]", expr_str)
-        return sp.Symbol(symbols[0]) if symbols else sp.Symbol("x")
+    # --------------------------------------------------------------------
+    # VARIABLE INFERENCE
+    # --------------------------------------------------------------------
+    def _infer_variable(self, text: str) -> str:
+        # crude variable inference: look for x, y, z, t, or any letter
+        m = re.search(r"[a-zA-Z]", text)
+        if m:
+            return sp.Symbol(m.group(0))
+        return sp.Symbol("x")  # fallback to x
+
+    def solve(self, expr):
+        # Differentiation
+        if isinstance(expr, sp.Derivative):
+            return expr.doit()
+
+        # Integration
+        if isinstance(expr, sp.Integral):
+            return expr.doit()
+
+        # Equations
+        if isinstance(expr, sp.Eq):
+            return sp.solve(expr)
+
+        # Expressions / simplify
+        return sp.simplify(expr)

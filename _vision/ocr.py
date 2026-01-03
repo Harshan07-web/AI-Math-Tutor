@@ -1,26 +1,73 @@
+import re
 from pix2tex.cli import LatexOCR
 from PIL import Image
 from .preprocessing import Preprocessor
 
-class OCRProcessor:
 
-    def __init__(self, use_preprocessing=True):
+class OCRProcessor:
+    """
+    Image → LaTeX OCR processor with cleanup
+    """
+
+    def __init__(self, use_preprocessing: bool = True):
         self.use_preprocessing = use_preprocessing
         self.model = LatexOCR()
 
-<<<<<<< HEAD
-    def extract_text(self, image: Image.Image) -> str:
-=======
+    # --------------------------------------------------
+    # MAIN OCR METHOD
+    # --------------------------------------------------
     def image_to_latex(self, image: Image.Image) -> str:
         if not isinstance(image, Image.Image):
             raise TypeError("Input must be PIL.Image")
->>>>>>> c69c82bd0b9df88c70ab8d8e6b2e5158a370bf98
 
+        # 🧹 Preprocessing
         if self.use_preprocessing:
             image = Preprocessor.clean(image)
 
-        if not isinstance(image, Image.Image):
-            raise TypeError("Input must be PIL.Image")
+        # 🔍 OCR
+        try:
+            latex = self.model(image)
+        except Exception as e:
+            raise RuntimeError(f"OCR failed: {e}")
 
-        latex = self.model(image)
+        if not latex or not isinstance(latex, str):
+            return ""
+
+        # 🧠 Normalize OCR noise
+        latex = self.normalize_ocr_latex(latex)
+
+        return latex
+
+    # --------------------------------------------------
+    # OCR LATEX CLEANER
+    # --------------------------------------------------
+    @staticmethod
+    def normalize_ocr_latex(latex: str) -> str:
+        """
+        Fix common OCR hallucinations so SymPy can parse
+        """
+
+        rules = [
+            # ❌ Garbage symbols
+            (r"\\vdash", ""),
+            (r"\\angle", ""),
+            (r"\\Omega", "0"),
+            (r"\\mid", ""),
+            (r"\|+", ""),
+
+            # 🔁 Derivative fixes
+            (r"\\mathcal\s*\{D\}", r"\\frac{d}{dx}"),
+            (r"\\partial", r"\\frac{d}{dx}"),
+
+            # 📐 Formatting noise
+            (r"\\left|\\right", ""),
+            (r"\\displaystyle", ""),
+
+            # 🧹 Whitespace
+            (r"\s+", " "),
+        ]
+
+        for pattern, repl in rules:
+            latex = re.sub(pattern, repl, latex)
+
         return latex.strip()
