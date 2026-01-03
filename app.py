@@ -7,7 +7,7 @@ import os
 from _core.pipeline import Pipeline
    # adjust path if needed
 
-app = Flask(__name__)
+app = Flask(__name__,template_folder='_frontend/templates')
 
 # ✅ Initialize pipeline once
 pipeline = Pipeline()
