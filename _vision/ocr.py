@@ -3,6 +3,7 @@ from pix2tex.cli import LatexOCR
 from PIL import Image
 from .preprocessing import Preprocessor
 
+<<<<<<< HEAD
 
 class OCRProcessor:
     """
@@ -16,6 +17,13 @@ class OCRProcessor:
     # --------------------------------------------------
     # MAIN OCR METHOD
     # --------------------------------------------------
+=======
+class OCRProcessor:
+    def __init__(self, use_preprocessing=True):
+        self.use_preprocessing = use_preprocessing
+        self.model = LatexOCR()
+
+>>>>>>> 4a199d77ee220a94d59fd8e958a07d76fdaf495d
     def image_to_latex(self, image: Image.Image) -> str:
         if not isinstance(image, Image.Image):
             raise TypeError("Input must be PIL.Image")
@@ -24,6 +32,7 @@ class OCRProcessor:
         if self.use_preprocessing:
             image = Preprocessor.clean(image)
 
+<<<<<<< HEAD
         # 🔍 OCR
         try:
             latex = self.model(image)
@@ -70,4 +79,7 @@ class OCRProcessor:
         for pattern, repl in rules:
             latex = re.sub(pattern, repl, latex)
 
+=======
+        latex = self.model(image)
+>>>>>>> 4a199d77ee220a94d59fd8e958a07d76fdaf495d
         return latex.strip()
