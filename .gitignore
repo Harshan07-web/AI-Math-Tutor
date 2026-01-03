@@ -10,3 +10,4 @@ index.html
 static/
 tests/
 eh.env
+__pycache__
