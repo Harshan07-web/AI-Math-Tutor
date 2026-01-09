@@ -54,3 +54,4 @@ class Preprocessor:
         img = Preprocessor.denoise(img)
         img = Preprocessor.threshold(img)
         return img
+
