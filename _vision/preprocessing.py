@@ -1,50 +1,29 @@
 import cv2
 import numpy as np
 from PIL import Image, ImageEnhance
-from typing import Union
-
 
 class Preprocessor:
-    """Image preprocessing for OCR using OpenCV and PIL."""
 
     @staticmethod
-    def read_image(source: Union[str, np.ndarray, Image.Image]) -> np.ndarray:
-        """Read image from file path, numpy array, or PIL Image."""
-        if isinstance(source, np.ndarray):
-            img = source.copy()
-        elif isinstance(source, Image.Image):
-            img = np.array(source.convert("RGB"))[:, :, ::-1]  # RGB to BGR
-        else:
-            img = cv2.imread(source)
-            if img is None:
-                raise FileNotFoundError(f"Cannot read image: {source}")
-        return img
+    def clean(image: Image.Image) -> Image.Image:
+        """
+        Best preprocessing for Math OCR (pix2tex)
+        Returns PIL Image
+        """
 
-    @staticmethod
-    def to_grayscale(img: np.ndarray) -> np.ndarray:
-        if img.ndim == 3:
-            return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        return img.copy()
+        if not isinstance(image, Image.Image):
+            raise TypeError("Input must be PIL.Image")
 
-    @staticmethod
-    def enhance_contrast(img: np.ndarray, factor: float = 1.5) -> np.ndarray:
-        pil = Image.fromarray(img if img.ndim == 2 else cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-        pil = ImageEnhance.Contrast(pil).enhance(factor)
-        img = np.array(pil)
-        if img.ndim == 3:
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        return img
+        # Convert PIL → OpenCV
+        img = np.array(image.convert("RGB"))
 
-    @staticmethod
-    def denoise(img: np.ndarray, ksize: int = 3) -> np.ndarray:
-        return cv2.medianBlur(img, ksize)
+        # Grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
-    @staticmethod
-    def threshold(img: np.ndarray) -> np.ndarray:
-        gray = Preprocessor.to_grayscale(img)
-        return cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                     cv2.THRESH_BINARY, 25, 10)
+        # Denoise
+        gray = cv2.fastNlMeansDenoising(gray, None, 30, 7, 21)
 
+<<<<<<< HEAD
     @staticmethod
     def preprocess(img: Union[str, np.ndarray, Image.Image]) -> np.ndarray:
         """Full preprocessing pipeline: read → grayscale → enhance → denoise → threshold."""
@@ -55,3 +34,27 @@ class Preprocessor:
         img = Preprocessor.threshold(img)
         return img
 
+=======
+        # Adaptive Threshold
+        thresh = cv2.adaptiveThreshold(
+            gray,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            31,
+            10
+        )
+
+        # Morphological cleaning
+        kernel = np.ones((2, 2), np.uint8)
+        cleaned = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+
+        # Convert back to PIL
+        pil_img = Image.fromarray(cleaned)
+
+        # Enhance contrast
+        enhancer = ImageEnhance.Contrast(pil_img)
+        pil_img = enhancer.enhance(2.0)
+
+        return pil_img
+>>>>>>> d650762247c0519fda0bd6231f11f821ed3c6595

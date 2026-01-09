@@ -1,2 +1,10 @@
 venv
 sample.jpg
+.env
+sample1.png
+test_pipeline.py
+test_solver.py
+tests
+tests/
+eh.env
+__pycache__

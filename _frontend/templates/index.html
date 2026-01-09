@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Math Tutor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+
+<div class="container">
+    <h1>AI Math Engine</h1>
+    <p class="subtitle">Your intelligent companion for solving & understanding math.</p>
+
+    <div class="tab">
+        <button class="tablinks active" onclick="openTab(event, 'OCR')">📸 Scan</button>
+        <button class="tablinks" onclick="openTab(event, 'Solver')">🧮 Solve</button>
+        <button class="tablinks" onclick="openTab(event, 'Doubt')">❓ Ask</button>
+    </div>
+
+    <div id="OCR" class="tabcontent" style="display: block;">
+        <h3>Upload Problem</h3>
+        <div class="input-group">
+            <input type="file" id="ocr_file" accept="image/*">
+        </div>
+        <button class="action-btn" onclick="sendOCR()">
+            <span>✨ Analyze Image</span>
+        </button>
+        
+        <div class="result-box" id="ocr_result_box" style="display:none;">
+            <h4>Recognized Math</h4>
+            <div id="ocr_result" class="math-output">$$ ... $$</div> 
+        </div>
+    </div>
+
+    <div id="Solver" class="tabcontent">
+        <h3>Type Problem</h3>
+        <div class="input-group">
+            <input type="text" id="math_input" placeholder="e.g. Integrate x^2 + 5x dx">
+        </div>
+        <button class="action-btn" onclick="solveMath()">
+            <span>🚀 Solve Now</span>
+        </button>
+
+        <div class="result-box" id="math_result_box" style="display:none;">
+            <h4>Final Answer</h4>
+            <div id="math_answer" class="math-output"></div>
+            
+            <h4>Step-by-Step Solution</h4>
+            <div id="math_steps" class="steps-container"></div>
+            
+            <h4 style="margin-top:20px;">AI Explanation</h4>
+            <p id="math_explanation" style="color: #cbd5e1; line-height: 1.6;"></p>
+        </div>
+    </div>
+
+    <div id="Doubt" class="tabcontent">
+        <h3>Ask a Doubt</h3>
+        <p style="color: #94a3b8; margin-bottom: 15px;">Stuck on a specific step? Ask me anything about the solution.</p>
+        
+        <div class="input-group">
+            <input type="number" id="doubt_step" placeholder="Step Number (Optional)">
+        </div>
+        <div class="input-group">
+            <input type="text" id="doubt_question" placeholder="e.g. Why did you use the Chain Rule here?">
+        </div>
+        
+        <button class="action-btn" onclick="askDoubt()">
+            <span>💡 Get Explanation</span>
+        </button>
+        
+        <div class="result-box" id="doubt_result_box" style="display:none;">
+            <h4>AI Response</h4>
+            <p id="doubt_answer" style="color: #cbd5e1; line-height: 1.6;"></p>
+        </div>
+    </div>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+
+</body>
+</html>
