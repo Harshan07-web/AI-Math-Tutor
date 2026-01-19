@@ -4,7 +4,7 @@ from _math_engine.step_extractor import StepExtractor
 from _math_engine.step_normalizer import StepNormalizer
 from _llm.explainer import StepExplainer
 from _llm.doubt_handler import DoubtHandler
-from _vision.ocr import OCRProcessor
+#from _vision.ocr import OCRProcessor
 import os
 import re
 
@@ -16,7 +16,7 @@ class Pipeline:
         self.normalizer = StepNormalizer()
         self.explainer = StepExplainer()
         self.doubt = DoubtHandler()
-        self.ocr = OCRProcessor(use_preprocessing=True)
+        #self.ocr = OCRProcessor(use_preprocessing=True)
 
     def _clean_math_expr(self, latex_str: str) -> str:
         """
