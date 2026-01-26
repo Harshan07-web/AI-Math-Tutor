@@ -55,7 +55,7 @@ function solveMath() {
     resultBox.style.display = "block";
     document.getElementById("math_answer").innerHTML = '<span style="color:#aaa;">Computing...</span>';
     document.getElementById("math_steps").innerHTML = "";
-    document.getElementById("math_explanation").textContent = "";
+    document.getElementById("math_explanation").innerHTML = "";
 
     let formData = new FormData();
     formData.append("math_input", input);
@@ -80,7 +80,7 @@ function solveMath() {
                 stepsHtml = "<p style='color:#aaa'>No intermediate steps available.</p>";
             }
             document.getElementById("math_steps").innerHTML = stepsHtml;
-            document.getElementById("math_explanation").textContent = data.explanation || "No explanation provided.";
+            document.getElementById("math_explanation").innerHTML = data.explanation || "<p>No explanation provided.</p>";
 
             MathJax.typeset();
         }
@@ -110,7 +110,8 @@ function askDoubt() {
     fetch("/ask_doubt", {method: "POST", body: formData})
     .then(res => res.json())
     .then(data => {
-        answerText.textContent = data.answer || data.error;
+        answerText.innerHTML = data.answer || data.error;
+
     })
     .catch(err => console.error(err));
 }

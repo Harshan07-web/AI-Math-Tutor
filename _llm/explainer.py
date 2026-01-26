@@ -26,6 +26,9 @@ class StepExplainer:
 
         prompt = f"""
 You are a friendly math tutor. Explain the steps for solving a {problem_type} problem.
+Explain the solution using ONLY valid HTML.
+DO NOT use Markdown syntax.
+DO NOT use ###, **, ---, or bullet dashes.
 
 Steps performed:
 {formatted_steps}
