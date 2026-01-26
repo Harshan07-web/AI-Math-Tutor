@@ -9,13 +9,12 @@ class MathSolver:
 
     def solve(self, user_input: str) -> dict:
         """Classify automatically based on keywords & solve."""
-        cleaned = user_input.replace("^", "**").strip()
+        cleaned = user_input.replace(" ", "").replace("^", "**")
 
         try:
             # 1. Differentiation detection
             # Matches: diff, differentiate, d/dx, derivative
-            diff_keywords = ["d/dx", "diff", "differentiate", "derivative"]
-            if any(k in cleaned.lower() for k in diff_keywords):
+            if re.match(r"^(d/dx|diff|differentiate|derivative)\s*\(.*\)$", cleaned, re.IGNORECASE):
                 return self._solve_differentiation(cleaned)
 
             # 2. Integration detection
